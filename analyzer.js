@@ -76,12 +76,16 @@ function analyzeHtml(html, keywordsCsv) {
     else add('good', `«${kw}» присутствует в ключевых элементах`, 0);
   });
 
+  const h2Count = $('h2').length;
+  const rawBodyText = $('body').text().trim();
+  const wordCount = rawBodyText ? rawBodyText.split(/\s+/).filter(Boolean).length : 0;
+
   score = Math.max(0, Math.min(100, Math.round(score)));
   return {
     score,
     issues,
     spaDetected,
-    meta: { titleText, descText, h1Count, imgsMissingAlt, imgsTotal, hasSchema, hasCanonical }
+    meta: { titleText, descText, h1Count, imgsMissingAlt, imgsTotal, hasSchema, hasCanonical, h2Count, wordCount }
   };
 }
 
