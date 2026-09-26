@@ -125,13 +125,29 @@ async function runAnalysis(ctx, chatId, url, keywords) {
   }
 }
 
+// Rough, unofficial heuristic — there is no industry-standard "GEO score".
+// Approximates how likely a page is to be picked up and cited by AI answer
+// engines (ChatGPT, Perplexity, etc.), which lean on similar on-page signals
+// to classic SEO: clear structure, structured data, enough real content.
+function geoScore(meta) {
+  let score = 0;
+  if (meta.hasSchema) score += 30;
+  if (meta.h1Count === 1) score += 15;
+  if (meta.h2Count >= 2) score += 15;
+  if (meta.titleText && meta.titleText.length >= 30 && meta.titleText.length <= 60) score += 15;
+  if (meta.descText && meta.descText.length >= 120 && meta.descText.length <= 160) score += 10;
+  if (meta.wordCount >= 300) score += 15;
+  return Math.min(100, score);
+}
+
 const METRICS = [
   { key: 'score', label: 'SEO-скор', hint: 'общая оценка страницы', higherBetter: true },
   { key: 'titleLen', label: 'Длина title', hint: 'влияет на кликабельность в поиске (норма 30–60)' },
   { key: 'descLen', label: 'Длина description', hint: 'влияет на CTR из поиска (норма 120–160)' },
   { key: 'h1Count', label: 'Кол-во H1', hint: 'главный заголовок страницы — должен быть один' },
   { key: 'imgsMissingAlt', label: 'Картинок без alt', hint: 'хуже доступность и картиночный поиск', higherBetter: false },
-  { key: 'hasSchema', label: 'Structured data', hint: 'помогает попасть в расширенные сниппеты в поиске', higherBetter: true }
+  { key: 'hasSchema', label: 'Structured data', hint: 'помогает попасть в расширенные сниппеты в поиске', higherBetter: true },
+  { key: 'geo', label: 'GEO-потенциал', hint: 'приблизительная оценка: вероятность, что нейросеть процитирует страницу в ответе', higherBetter: true }
 ];
 
 function metricValues(result) {
@@ -141,7 +157,8 @@ function metricValues(result) {
     descLen: result.meta.descText.length,
     h1Count: result.meta.h1Count,
     imgsMissingAlt: result.meta.imgsMissingAlt,
-    hasSchema: result.meta.hasSchema ? 'есть' : 'нет'
+    hasSchema: result.meta.hasSchema ? 'есть' : 'нет',
+    geo: geoScore(result.meta)
   };
 }
 
@@ -160,18 +177,31 @@ async function runComparison(ctx, chatId, urlA, urlB, keywords) {
     METRICS.forEach(m => {
       const x = va[m.key], y = vb[m.key];
       let winMark = '';
-      if (m.higherBetter !== undefined && typeof x === 'number' && typeof y === 'number' && x !== y) {
-        const aWins = m.higherBetter ? x > y : x < y;
-        winMark = aWins ? '  🏆 сайт 🔵' : '  🏆 сайт 🟠';
-      } else if (m.higherBetter !== undefined && x !== y) {
-        // hasSchema (string 'есть'/'нет')
-        const aWins = x === 'есть';
-        winMark = aWins ? '  🏆 сайт 🔵' : '  🏆 сайт 🟠';
+      if (m.higherBetter !== undefined && x !== y) {
+        let aWins;
+        if (typeof x === 'number' && typeof y === 'number') aWins = m.higherBetter ? x > y : x < y;
+        else aWins = x === 'есть';
+        winMark = aWins ? '🏆 лучше у 🔵' : '🏆 лучше у 🟠';
       }
-      out += `\n<b>${escapeHtml(m.label)}</b> <i>(${escapeHtml(m.hint)})</i>\n🔵 ${x}   🟠 ${y}${winMark}\n`;
+      out += `\n<b>${escapeHtml(m.label)}</b> <i>(${escapeHtml(m.hint)})</i>\n🔵 ${x}\n🟠 ${y}\n`;
+      if (winMark) out += `${winMark}\n`;
     });
 
-    if (a.spaDetected || b.spaDetected) out += '\n⚙️ Один из сайтов похож на SPA без серверного рендеринга — сравнение может быть некорректным.';
+    out += `\n📊 <b>Итог</b>\n`;
+    if (va.score !== vb.score) {
+      const better = va.score > vb.score ? '🔵' : '🟠';
+      out += `По техническому SEO выше шансы на органическую выдачу у сайта ${better} — но это только on-page факторы, без учёта ссылочной массы, возраста домена и глубины контента.\n`;
+    } else {
+      out += `По техническому SEO сайты примерно на одном уровне.\n`;
+    }
+    if (va.geo !== vb.geo) {
+      const betterGeo = va.geo > vb.geo ? '🔵' : '🟠';
+      out += `По GEO (вероятности попасть в ответ нейросети) выше шансы у сайта ${betterGeo} — это ориентировочная оценка, официального стандарта GEO-скоринга пока не существует.`;
+    } else {
+      out += `По GEO-показателям сайты примерно равны.`;
+    }
+
+    if (a.spaDetected || b.spaDetected) out += '\n\n⚙️ Один из сайтов похож на SPA без серверного рендеринга — сравнение может быть некорректным.';
     await ctx.telegram.editMessageText(chatId, wait.message_id, undefined, out, { parse_mode: 'HTML' });
   } catch (err) {
     await ctx.telegram.editMessageText(chatId, wait.message_id, undefined, '⚠️ ' + describeFetchError(err));
