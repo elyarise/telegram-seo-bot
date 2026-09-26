@@ -67,13 +67,14 @@ function analyzeHtml(html, keywordsCsv) {
   const bodyText = $('body').text().toLowerCase();
   const h1Texts = $('h1').map((_, el) => $(el).text().toLowerCase()).get();
   const kwList = (keywordsCsv || '').split(',').map(k => k.trim().toLowerCase()).filter(Boolean);
+  const keywordResults = [];
   kwList.forEach(kw => {
     const inTitle = titleText.toLowerCase().includes(kw);
     const inH1 = h1Texts.some(h => h.includes(kw));
     const inBody = bodyText.includes(kw);
-    if (!inTitle && !inH1 && !inBody) add('crit', `Ключевое слово «${kw}» не найдено ни в title, ни в H1, ни в тексте`, 10);
-    else if (!inTitle && !inH1) add('warn', `«${kw}» есть в тексте, но отсутствует в title/H1`, 4);
-    else add('good', `«${kw}» присутствует в ключевых элементах`, 0);
+    if (!inTitle && !inH1 && !inBody) { keywordResults.push({ kw, status: 'missing' }); score -= 10; }
+    else if (!inTitle && !inH1) { keywordResults.push({ kw, status: 'partial' }); score -= 4; }
+    else { keywordResults.push({ kw, status: 'ok' }); }
   });
 
   const h2Count = $('h2').length;
@@ -85,6 +86,7 @@ function analyzeHtml(html, keywordsCsv) {
     score,
     issues,
     spaDetected,
+    keywordResults,
     meta: { titleText, descText, h1Count, imgsMissingAlt, imgsTotal, hasSchema, hasCanonical, h2Count, wordCount }
   };
 }
