@@ -202,7 +202,10 @@ async function runComparison(ctx, chatId, urlA, urlB, keywords) {
     }
 
     if (a.spaDetected || b.spaDetected) out += '\n\n⚙️ Один из сайтов похож на SPA без серверного рендеринга — сравнение может быть некорректным.';
-    await ctx.telegram.editMessageText(chatId, wait.message_id, undefined, out, { parse_mode: 'HTML' });
+    await ctx.telegram.editMessageText(chatId, wait.message_id, undefined, out, {
+      parse_mode: 'HTML',
+      reply_markup: menuButtons().reply_markup
+    });
   } catch (err) {
     await ctx.telegram.editMessageText(chatId, wait.message_id, undefined, '⚠️ ' + describeFetchError(err));
   }
