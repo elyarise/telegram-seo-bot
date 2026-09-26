@@ -100,6 +100,19 @@ function formatReport(url, result) {
     lines.push(`✅ Соответствует стандартам (${good.length}):`);
     good.forEach(i => lines.push(`• ${escapeHtml(i.text)}`));
   }
+
+  if (result.keywordResults && result.keywordResults.length) {
+    lines.push('');
+    lines.push('🔑 <b>Ключевые слова:</b>');
+    result.keywordResults.forEach(k => {
+      const icon = k.status === 'ok' ? '✅' : k.status === 'partial' ? '🟡' : '🔴';
+      const desc = k.status === 'ok' ? 'есть в title/H1'
+        : k.status === 'partial' ? 'есть в тексте, но не в title/H1'
+        : 'не найдено ни в title, ни в H1, ни в тексте';
+      lines.push(`${icon} «${escapeHtml(k.kw)}» — ${desc}`);
+    });
+  }
+
   return lines.join('\n');
 }
 
@@ -186,6 +199,15 @@ async function runComparison(ctx, chatId, urlA, urlB, keywords) {
       out += `\n<b>${escapeHtml(m.label)}</b> <i>(${escapeHtml(m.hint)})</i>\n🔵 ${x}\n🟠 ${y}\n`;
       if (winMark) out += `${winMark}\n`;
     });
+
+    if (a.keywordResults && a.keywordResults.length) {
+      out += `\n🔑 <b>Ключевые слова</b>\n`;
+      a.keywordResults.forEach((kwA, idx) => {
+        const kwB = b.keywordResults[idx];
+        const iconFor = (status) => status === 'ok' ? '✅' : status === 'partial' ? '🟡' : '🔴';
+        out += `\n«${escapeHtml(kwA.kw)}»\n🔵 ${iconFor(kwA.status)}\n🟠 ${iconFor(kwB.status)}\n`;
+      });
+    }
 
     out += `\n📊 <b>Итог</b>\n`;
     if (va.score !== vb.score) {
