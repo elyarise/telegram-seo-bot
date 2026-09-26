@@ -125,22 +125,52 @@ async function runAnalysis(ctx, chatId, url, keywords) {
   }
 }
 
+const METRICS = [
+  { key: 'score', label: 'SEO-скор', hint: 'общая оценка страницы', higherBetter: true },
+  { key: 'titleLen', label: 'Длина title', hint: 'влияет на кликабельность в поиске (норма 30–60)' },
+  { key: 'descLen', label: 'Длина description', hint: 'влияет на CTR из поиска (норма 120–160)' },
+  { key: 'h1Count', label: 'Кол-во H1', hint: 'главный заголовок страницы — должен быть один' },
+  { key: 'imgsMissingAlt', label: 'Картинок без alt', hint: 'хуже доступность и картиночный поиск', higherBetter: false },
+  { key: 'hasSchema', label: 'Structured data', hint: 'помогает попасть в расширенные сниппеты в поиске', higherBetter: true }
+];
+
+function metricValues(result) {
+  return {
+    score: result.score,
+    titleLen: result.meta.titleText.length,
+    descLen: result.meta.descText.length,
+    h1Count: result.meta.h1Count,
+    imgsMissingAlt: result.meta.imgsMissingAlt,
+    hasSchema: result.meta.hasSchema ? 'есть' : 'нет'
+  };
+}
+
 async function runComparison(ctx, chatId, urlA, urlB, keywords) {
   const wait = await ctx.reply('🔎 Скачиваю и сравниваю обе страницы…');
   try {
     const [htmlA, htmlB] = await Promise.all([fetchHtml(urlA), fetchHtml(urlB)]);
     const a = analyzeHtml(htmlA, keywords);
     const b = analyzeHtml(htmlB, keywords);
-    const rows = [
-      ['SEO-скор', a.score, b.score],
-      ['Длина title', a.meta.titleText.length, b.meta.titleText.length],
-      ['Длина description', a.meta.descText.length, b.meta.descText.length],
-      ['Кол-во H1', a.meta.h1Count, b.meta.h1Count],
-      ['Картинок без alt', a.meta.imgsMissingAlt, b.meta.imgsMissingAlt],
-      ['Structured data', a.meta.hasSchema ? 'есть' : 'нет', b.meta.hasSchema ? 'есть' : 'нет']
-    ];
-    let out = `⚖️ Сравнение\n<b>${escapeHtml(urlA)}</b> vs <b>${escapeHtml(urlB)}</b>\n\nРезультат:\n`;
-    rows.forEach(r => { out += `${escapeHtml(r[0])}: <b>${r[1]}</b> vs <b>${r[2]}</b>\n`; });
+    const va = metricValues(a);
+    const vb = metricValues(b);
+
+    let out = `⚖️ <b>Сравнение сайтов</b>\n\n`;
+    out += `🔵 ${escapeHtml(urlA)}\n🟠 ${escapeHtml(urlB)}\n`;
+
+    METRICS.forEach(m => {
+      const x = va[m.key], y = vb[m.key];
+      let winMark = '';
+      if (m.higherBetter !== undefined && typeof x === 'number' && typeof y === 'number' && x !== y) {
+        const aWins = m.higherBetter ? x > y : x < y;
+        winMark = aWins ? '  🏆 сайт 🔵' : '  🏆 сайт 🟠';
+      } else if (m.higherBetter !== undefined && x !== y) {
+        // hasSchema (string 'есть'/'нет')
+        const aWins = x === 'есть';
+        winMark = aWins ? '  🏆 сайт 🔵' : '  🏆 сайт 🟠';
+      }
+      out += `\n<b>${escapeHtml(m.label)}</b> <i>(${escapeHtml(m.hint)})</i>\n🔵 ${x}   🟠 ${y}${winMark}\n`;
+    });
+
     if (a.spaDetected || b.spaDetected) out += '\n⚙️ Один из сайтов похож на SPA без серверного рендеринга — сравнение может быть некорректным.';
     await ctx.telegram.editMessageText(chatId, wait.message_id, undefined, out, { parse_mode: 'HTML' });
   } catch (err) {
